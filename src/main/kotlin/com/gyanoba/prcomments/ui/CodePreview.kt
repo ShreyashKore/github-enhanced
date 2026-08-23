@@ -99,7 +99,11 @@ class CodePreview(private val project: Project?) : BorderLayoutPanel() {
 
             val visibleLines = lineCount.coerceAtMost(maxVisibleLines)
             val height = visibleLines * editor.lineHeight + JBUI.scale(VERTICAL_PADDING)
-            editorField.preferredSize = Dimension(editorField.preferredSize.width, height)
+            // Read width from the Editor's own content component, not editorField.preferredSize:
+            // that getter lazily creates the editor via this very callback, so referencing it here
+            // recurses infinitely and blows the stack.
+            val width = editor.contentComponent.preferredSize.width
+            editorField.preferredSize = Dimension(width, height)
             editorField.revalidate()
         }
 
