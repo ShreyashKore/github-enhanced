@@ -20,7 +20,7 @@ and what would have to change to remove the risk entirely.
 | GraphQL schema field renames | `X-GitHub-Api-Version: 2022-11-28` is pinned on every request. `GitHubClient.graphQl` inspects the `errors` array even on HTTP 200 and raises `GitHubError.GraphQl` carrying GitHub's own message, which names the offending field. Queries live as plain strings in `GraphQlQueries` so they can be diffed against the schema by eye. |
 | Rate limits from aggressive auto-refresh | Default interval 120 s, clamped to 30–3600 s. The timer only runs while the tool window is visible. Each timed refresh first issues the tiny `pullRequest { updatedAt }` query and skips the full fetch when nothing changed. `403`/`429` responses are mapped to `GitHubError.Forbidden` carrying `x-ratelimit-reset`, shown as "resets at 14:32". |
 | Line mapping wrong on rebase-heavy branches | The state chip never lies: `EXACT` / `Moved a → b` / `Changed since comment` / `Line removed` / `File deleted` / unknown. **Go to Line** is disabled for `DELETED`, `FILE_DELETED` and `UNKNOWN`; double-click on such a thread opens GitHub instead of jumping somewhere plausible-looking. |
-| Platform API drift across IDE versions | No upper `until-build`. `verifyPlugin` is wired into CI. Nothing in the plugin uses `@ApiStatus.Internal` API — see below. |
+| Platform API drift across IDE versions | No upper `until-build`. `verifyPlugin` is wired into CI and currently passes against three recent majors — see below. |
 | Multi-root / monorepo path mismatch | Every path is resolved against `DetectedRepo.root` (a `GitRepository.root`), never `project.basePath` or `guessProjectDir()`. In a multi-root project the repository containing the currently open file wins. |
 | Bundled dependency conflicts | Only `kotlinx-serialization-json` and `-core` ship in `lib/`. `kotlin-stdlib`, `org.jetbrains:annotations` and `kotlinx-coroutines` are excluded from `runtimeClasspath` and `testRuntimeClasspath`; verify with `unzip -l build/distributions/*.zip`. |
 | Our `kotlinx-serialization` copy shadowing the platform's, or vice versa | The version is pinned to **1.8.1**, exactly what IntelliJ Platform 2025.3 ships in `lib/module-intellij.libraries.kotlinx.serialization.*.jar`, so the plugin behaves identically whichever copy the classloader picks. Bump it only after checking `license/third-party-libraries.json` in the target platform. |
@@ -28,9 +28,26 @@ and what would have to change to remove the risk entirely.
 | A thread with more than 100 comments | The GraphQL query takes the first 100 and the extra page is not fetched (`comments.pageInfo` is parsed but unused). Rare in practice; the thread still renders, just without its tail. Fetching the remainder lazily when the thread is opened is the follow-up. |
 | A PR with more than 1000 review threads | `GitHubApi.MAX_THREAD_PAGES = 20` (20 × 50) is a runaway guard; hitting it logs a warning and returns what was fetched. |
 
+## Plugin Verifier status
+
+`./gradlew verifyPlugin` reports **Compatible** against `IU-253.33813.55`, `IU-261.27258.48` and
+`IU-262.10315.19` — three recent majors — with **no internal API usages**.
+
+What it still reports, and why it is left alone:
+
+- **4 deprecated + 6 experimental usages, all on `ToolWindowFactory`** (`isApplicable`,
+  `isDoNotActivateOnStart`, `getIcon`, `getAnchor`, `manage`). `PrCommentsToolWindowFactory` does not
+  reference any of them. `ToolWindowFactory` is a *Kotlin* interface, so the compiler emits bridge
+  overrides for its default methods in every implementing class; the verifier sees the bridges. There
+  is no way to suppress this short of writing the factory in Java, and it affects every Kotlin plugin
+  that implements the interface.
+- **`AnAction.shortcutSet` was an internal-API usage and has been removed.** F5 on the refresh action
+  is now bound with `registerCustomShortcutSet(shortcutSet, component, disposable)`, which is public
+  API and correctly scopes the shortcut to the tool window rather than the global keymap.
+
 ## API status
 
-No `@ApiStatus.Internal` API is used. Everything the plugin touches is open API:
+Everything the plugin touches directly is open API:
 `ToolWindowFactory`, `PersistentStateComponent`, `PasswordSafe`, `EditorTextField`, `ComparisonManager`,
 `git4idea`'s `GitRepositoryManager` / `GitFileUtils`, `UiDataProvider`, Kotlin UI DSL v2.
 

@@ -182,6 +182,9 @@ class ThreadDetailPanel(
     /** Re-renders only the parts that a mutation can change, without disturbing the reply draft. */
     fun refreshInPlace(updated: ReviewThread) {
         if (thread?.nodeId != updated.nodeId) return
+        // The panel re-renders on every state emission, including a filter keystroke. ReviewThread is
+        // a data class, so an unchanged thread means there is nothing to rebuild.
+        if (thread == updated) return
         thread = updated
         renderHeader(updated)
         renderComments(updated)

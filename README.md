@@ -4,10 +4,8 @@ A JetBrains IDE plugin that puts every GitHub pull request review comment in a t
 the code it is about — including what that code looked like when the comment was written and what it
 looks like in your working tree right now.
 
-![Tool window layout](docs/screenshot-toolwindow.png)
-
-> Screenshots live in `docs/`. Capture them from `./gradlew runIde` against a real PR before publishing
-> to the Marketplace.
+> **Screenshots are still to be captured.** Run `./gradlew runIde` against a real PR, grab the tool
+> window in both Light and Dark, and add them to `docs/` before publishing to the Marketplace.
 
 ---
 

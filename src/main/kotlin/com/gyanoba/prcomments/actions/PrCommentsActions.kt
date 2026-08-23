@@ -11,6 +11,7 @@ import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
+import com.intellij.openapi.actionSystem.ShortcutSet
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -24,11 +25,6 @@ class RefreshAction : DumbAwareAction(
     PrCommentsBundle.lazyMessage("action.refresh.description"),
     AllIcons.Actions.Refresh,
 ) {
-    init {
-        // Local F5, not a global keymap entry.
-        shortcutSet = CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0))
-    }
-
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
@@ -106,6 +102,9 @@ class SetPrNumberAction : DumbAwareAction(
         e.getData(PrCommentsDataKeys.PANEL)?.promptForPrNumber()
     }
 }
+
+/** F5 while the tool window has focus. Registered on the component, never in the global keymap. */
+val REFRESH_SHORTCUT: ShortcutSet = CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0))
 
 class SettingsAction : DumbAwareAction(
     PrCommentsBundle.lazyMessage("action.settings.text"),

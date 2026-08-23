@@ -2,6 +2,7 @@ package com.gyanoba.prcomments.ui
 
 import com.gyanoba.prcomments.PrCommentsBundle
 import com.gyanoba.prcomments.actions.OpenInBrowserAction
+import com.gyanoba.prcomments.actions.REFRESH_SHORTCUT
 import com.gyanoba.prcomments.actions.RefreshAction
 import com.gyanoba.prcomments.actions.SetPrNumberAction
 import com.gyanoba.prcomments.actions.SettingsAction
@@ -119,8 +120,12 @@ class PrCommentsPanel(
                 addToBottom(headerDetail)
             }
         )
+        val refresh = RefreshAction()
+        // AnAction.shortcutSet is @ApiStatus.Internal; registering against the component is the
+        // public equivalent, and scopes F5 to this tool window instead of the global keymap.
+        refresh.registerCustomShortcutSet(REFRESH_SHORTCUT, this@PrCommentsPanel, parentDisposable)
         val group = DefaultActionGroup(
-            RefreshAction(),
+            refresh,
             OpenInBrowserAction(),
             SetPrNumberAction(),
             SettingsAction(),
