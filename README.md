@@ -1,195 +1,126 @@
-# Github-enhanced
+# PR Comments
 
-[![Twitter Follow](https://img.shields.io/badge/follow-%40JBPlatform-1DA1F2?logo=twitter)](https://twitter.com/JBPlatform)
-[![Developers Forum](https://img.shields.io/badge/JetBrains%20Platform-Join-blue)][jb:forum]
+A JetBrains IDE plugin that puts every GitHub pull request review comment in a tool window, next to
+the code it is about — including what that code looked like when the comment was written and what it
+looks like in your working tree right now.
 
-## Connect repository to GitHub
+![Tool window layout](docs/screenshot-toolwindow.png)
 
-1. [Create a new repository](https://github.com/new) on GitHub.
-2. Run the following commands to initialize and push this project to the repository created in step 1:
+> Screenshots live in `docs/`. Capture them from `./gradlew runIde` against a real PR before publishing
+> to the Marketplace.
+
+---
+
+## What it does
+
+| | |
+|---|---|
+| **Finds your PR** | Detects the GitHub repository from the git remote and the pull request from the checked-out branch. Pin a PR number by hand when the branch has none, or several. |
+| **Lists every review thread** | File, line, author, relative timestamp, resolved badge, reply count and the first line of the comment. |
+| **Filters** | Resolved / unresolved · replied / not replied / replied by me / awaiting my reply · outdated · author (multi-select) · path · free text. All local — filtering never hits the network. |
+| **Sorts** | Created, last activity, file path or line, ascending or descending, with a stable secondary order. |
+| **Shows the diff hunk** | The ~5 lines as they were when the comment was written, syntax highlighted, with real file line numbers and the IDE's own diff colours. |
+| **Shows the line now** | The same line in your working tree, with drift correction and an honest state chip: `Current`, `Moved 42 → 57`, `Changed since comment`, `Line removed`, `File deleted`. |
+| **Navigates** | Double-click or Enter jumps the editor to the drift-corrected line. When the line is gone, it opens GitHub instead of guessing. |
+| **Replies and resolves** | Inline reply box with `Cmd/Ctrl+Enter`, a **Reply and Resolve** button, and optimistic updates that roll back with a Retry action if the request fails. |
+| **Refreshes** | Manually (toolbar or F5) and on a timer while the tool window is visible, without stealing your selection, scroll position or unsent draft. |
+
+## Requirements
+
+- IntelliJ IDEA, Android Studio, WebStorm or any JetBrains IDE built on platform **253** (2025.3) or
+  later. The bundled Git plugin (Git4Idea) is required and ships with all of them.
+- A GitHub personal access token.
+
+## Installing
+
+From a build:
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<username>/<repository>.git
-git push -u origin main
+./gradlew buildPlugin
+# -> build/distributions/github-enhanced-<version>.zip
 ```
 
-3. Configure publishing [secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) in the GitHub repository settings:
+Then **Settings → Plugins → ⚙ → Install Plugin from Disk…** and pick that ZIP.
 
-| Secret                 | Description                                                                                                |
-|------------------------|------------------------------------------------------------------------------------------------------------|
-| `PUBLISH_TOKEN`        | JetBrains Marketplace token — [generate here](https://plugins.jetbrains.com/author/me/tokens)              |
-| `CERTIFICATE_CHAIN`    | Plugin signing certificate chain ([docs](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html)) |
-| `PRIVATE_KEY`          | Plugin signing private key                                                                                 |
-| `PRIVATE_KEY_PASSWORD` | Password for the private key                                                                               |
+## Setting up the token
 
-## Overview
+**Settings → Tools → PR Comments**
 
-This repository implements an IntelliJ Platform plugin.
+1. Leave **GitHub host** as `github.com`, or set your GitHub Enterprise Server hostname. The REST and
+   GraphQL URLs are derived from it; override them only if you sit behind a proxy.
+2. Paste a personal access token.
+3. Click **Test connection** — it should report `Connected as <your login>`.
 
-## Demo Functionality
+### Required scopes
 
-The sample plugin adds a `My Tool Window` tool window with a simple functionality of shuffling a random number.
+| Token type | Scopes |
+|---|---|
+| Classic PAT | `repo` |
+| Fine-grained PAT | *Pull requests: Read & Write*, *Contents: Read*, *Metadata: Read* |
 
-## Plugin structure
+*Read & Write* on pull requests is needed to post replies and resolve threads; *Contents: Read* lets
+the plugin fetch a file at the PR head commit when that object is not in your local clone.
 
-A generated project contains the following content structure:
+The token is stored in the IDE's [`PasswordSafe`](https://plugins.jetbrains.com/docs/intellij/persisting-sensitive-data.html)
+— the system keychain on macOS, the credential store elsewhere. It is never written to `.idea/` or
+any file in the project, and never logged.
 
-```
-.
-├── .github/                GitHub Workflows, issue templates, and Dependabot configuration
-├── .run/                   Predefined Run/Debug Configurations
-├── gradle
-│   ├── wrapper/            Gradle Wrapper
-│   ├── libs.versions.toml  Version catalog
-├── src                     Plugin sources
-│   └── main
-│       ├── kotlin/         Kotlin production sources
-│       └── resources/      Plugin resources
-│           ├── META-INF/   Plugin configuration file and logo
-│           └── messages/   Message bundles
-├── .gitignore              Git ignoring rules
-├── build.gradle.kts        Gradle build configuration
-├── gradle.properties       Gradle configuration properties
-├── gradlew                 *nix Gradle Wrapper script
-├── gradlew.bat             Windows Gradle Wrapper script
-├── README.md               This file
-└── settings.gradle.kts     Gradle project settings
-```
+## Using it
 
-In addition to the configuration files, the most crucial part is the `src` directory, which contains our implementation and the manifest for our plugin – [plugin.xml][file:plugin.xml].
+Open the **PR Comments** tool window on the right rail.
 
-> [!NOTE]
-> To use Java in your plugin, create the `/src/main/java` directory.
+- **Header** — `owner/name #123 — Title`, with refresh, open-on-GitHub, set-PR-number and settings.
+- **Filter bar** — combo boxes for resolution, replies, author and sort; a free-text search and a path
+  filter, both debounced.
+- **Left** — the thread list. Double-click or Enter navigates.
+- **Right** — the thread: diff-hunk snapshot, current state of that line, every comment rendered as
+  Markdown, and the reply box.
 
-The plugin logo is placed in `src/main/resources/META-INF/pluginIcon.svg`.
-See [Plugin Logo][docs:logo] for more information and logo requirements.
+Right-click a row for **Resolve conversation** and **Open on GitHub**.
 
-## Build script
+### Reading the state chip
 
-The [build.gradle.kts][file:build.gradle.kts] is the core of the project definition.
-It applies three Gradle plugins:
+| Chip | Meaning |
+|---|---|
+| `Current · line 42` | The line is exactly where the comment left it. |
+| `Moved · line 42 → 57` | Unchanged content, pushed down or up by edits above it. |
+| `Changed since comment · line 57` | The line itself has been edited since the comment. |
+| `Line removed` | The line is gone. Navigation is disabled. |
+| `File deleted` | The file is gone from the working tree. |
 
-| Plugin                             | Description                                                                      |
-|------------------------------------|----------------------------------------------------------------------------------|
-| `org.jetbrains.kotlin.jvm`         | Adds Kotlin support                                                              |
-| `org.jetbrains.changelog`          | Simplifies patching the [CHANGELOG.md][file:CHANGELOG.md] file                   |
-| `org.jetbrains.intellij.platform`  | The [IntelliJ Platform Gradle Plugin][docs:intellij-platform-gradle-plugin-docs] |
+The chip never guesses. If the plugin cannot establish where a line went, it says so rather than
+navigating you somewhere plausible but wrong.
 
-The `intellijPlatform` dependencies block selects the IDE to compile against:
+## Not in this version
 
-```kotlin
-intellijIdea("2025.3.5")
+Creating new review comments on arbitrary lines, submitting or approving reviews, merging, CI status,
+gutter icons and editor inlays, and viewing several PRs at once. GitHub Enterprise Server is designed
+for (configurable host and URLs) but untested.
+
+## Developing
+
+```bash
+./gradlew runIde          # sandbox IDE with the plugin loaded
+./gradlew test            # unit tests — no network
+./gradlew verifyPlugin    # binary compatibility against the target IDE
+./gradlew buildPlugin     # distributable ZIP
 ```
 
-See [Target Versions][docs:target-version] for more information.
+- `TESTING.md` — the manual end-to-end checklist against a real PR.
+- `RISKS.md` — the risk register, and every deviation from the implementation plan with its reasoning.
 
-The `intellijPlatform` dependencies block also contains a dependency on the platform testing framework:
+### Layout
 
-```kotlin
-testFramework(TestFrameworkType.Platform)
+```
+src/main/kotlin/com/gyanoba/prcomments/
+├── model/      ReviewThread, ReviewComment, filters and sorting  (pure Kotlin)
+├── github/     HTTP client, GraphQL documents, DTOs, high-level API
+├── vcs/        remote-URL parsing, PR resolution, diff-hunk parsing, line drift correction
+├── service/    PrCommentsService (state, refresh, mutations), settings
+├── ui/         tool window, list, filters, detail pane, previews, Markdown renderer
+├── settings/   configurable page and the PasswordSafe wrapper
+└── actions/    refresh, toggle resolve, open in browser, set PR number
 ```
 
-See [Testing][docs:testing] for more information
-
-## Plugin configuration file
-
-The plugin configuration file is a [plugin.xml][file:plugin.xml] file located in the `src/main/resources/META-INF` directory.
-It provides general information about the plugin, its dependencies, extensions, and listeners.
-
-You can read more about this file in the [Plugin Configuration File][docs:plugin.xml] section of our documentation.
-
-### Plugin ID and name
-
-Generated plugin ID and name may require adjustment.
-
-These values are generated based on _Group ID_ and _Artifact ID_ provided in the IDE Plugin wizard.
-It is recommended to review `<id>` and `<name>` elements in the plugin.xml file, and adjust them if needed.
-
-Please note that Gradle properties `rootProject.name` and `project.group` don't need to match the `<id>` and `<name>` elements.
-There is no IntelliJ Platform-related reason they should as they serve different functions.
-
-## Predefined Run/Debug configurations
-
-Within the default project structure, there is a `.run` directory provided containing predefined *Run/Debug configurations* that expose corresponding Gradle tasks:
-
-| Configuration name  | Description                                                                                                                                                                         |
-|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Run IDE with Plugin | Runs [`:runIde`][docs:intellij-platform-gradle-plugin-runIde] IntelliJ Platform Gradle Plugin task. Use the *Debug* icon for plugin debugging.                                        |
-| Run Tests           | Runs [`:check`][gradle:lifecycle-tasks] Gradle task.                                                                                                                                |
-| Run Verifications   | Runs [`:verifyPlugin`][docs:intellij-platform-gradle-plugin-verifyPlugin] IntelliJ Platform Gradle Plugin task to check the plugin compatibility against the specified IntelliJ IDEs. |
-
-> [!NOTE]
-> You can find the logs from the running task in the `idea.log` tab.
-
-## Publishing the plugin
-
-> [!TIP]
-> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all recommended and required steps.
-
-Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward operation that uses the `publishPlugin` Gradle task provided by the [intellij-platform-gradle-plugin][docs:intellij-platform-gradle-plugin-docs].
-
-You can also upload the plugin to the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload) manually via UI.
-
-## GitHub Integration
-
-### GitHub Actions
-
-The project includes [GitHub Actions][https://docs.github.com/en/actions] workflows for automated CI/CD:
-
-| Workflow | Trigger | Description |
-|---|---|---|
-| [Build](.github/workflows/build.yml) | Push / PR | Builds, tests, and verifies the plugin; creates a draft release |
-| [Release](.github/workflows/release.yml) | GitHub Release | Publishes the plugin to JetBrains Marketplace |
-
-### GitHub issue templates
-
-The project includes GitHub issue templates:
-- [Bug Report](.github/ISSUE_TEMPLATE/bug-report.yml)
-- [Feature Request](.github/ISSUE_TEMPLATE/feature-request.yml)
-
-See [Syntax for issue forms](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms).
-
-### Dependabot
-
-[Dependabot configuration](.github/dependabot.yml) file enables tracking outdated or vulnerable dependencies.
-
-
-## Useful links
-
-- [IntelliJ Platform SDK Plugin SDK][docs]
-- [IntelliJ Platform Gradle Plugin Documentation][docs:intellij-platform-gradle-plugin-docs]
-- [IntelliJ Platform Explorer][jb:ipe]
-- [JetBrains Marketplace Quality Guidelines][jb:quality-guidelines]
-- [IntelliJ Platform UI Guidelines][jb:ui-guidelines]
-- [JetBrains Marketplace Paid Plugins][jb:paid-plugins]
-- [IntelliJ SDK Code Samples][gh:code-samples]
-
-[docs]: https://plugins.jetbrains.com/docs/intellij
-[docs:plugin.xml]: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html?from=IJPluginReadmeFile
-[docs:publishing]: https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginReadmeFile
-[docs:intellij-platform-gradle-plugin-docs]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html?from=IJPluginReadmeFile
-[docs:intellij-platform-gradle-plugin-runIde]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#runIde
-[docs:intellij-platform-gradle-plugin-verifyPlugin]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#verifyPlugin
-[docs:logo]: https://plugins.jetbrains.com/docs/intellij/plugin-icon-file.html?from=IJPluginReadmeFile
-[docs:target-version]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#target-versions
-[docs:testing]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#testing
-
-[file:build.gradle.kts]: ./build.gradle.kts
-[file:CHANGELOG.md]: ./CHANGELOG.md
-[file:gradle.properties]: ./gradle.properties
-[file:plugin.xml]: ./src/main/resources/META-INF/plugin.xml
-
-[gh:code-samples]: https://github.com/JetBrains/intellij-sdk-code-samples
-
-[gradle:lifecycle-tasks]: https://docs.gradle.org/current/userguide/java_plugin.html#lifecycle_tasks
-
-[jb:github]: https://github.com/JetBrains/.github/blob/main/profile/README.md
-[jb:forum]: https://platform.jetbrains.com/
-[jb:quality-guidelines]: https://plugins.jetbrains.com/docs/marketplace/quality-guidelines.html
-[jb:paid-plugins]: https://plugins.jetbrains.com/docs/marketplace/paid-plugins-marketplace.html
-[jb:ipe]: https://jb.gg/ipe
-[jb:ui-guidelines]: https://jetbrains.github.io/ui
+Threading rules the code holds itself to: GitHub and git calls on `Dispatchers.IO`, VFS and Document
+reads inside a read action, Swing on `Dispatchers.EDT`, and nothing blocking on the EDT.
