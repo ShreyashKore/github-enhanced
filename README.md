@@ -171,3 +171,7 @@ src/main/kotlin/com/gyanoba/prcomments/
 
 Threading rules the code holds itself to: GitHub and git calls on `Dispatchers.IO`, VFS and Document
 reads inside a read action, Swing on `Dispatchers.EDT`, and nothing blocking on the EDT.
+
+## License
+
+[MIT](LICENSE) © Shreyash Kore.
