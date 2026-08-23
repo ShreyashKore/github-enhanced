@@ -28,7 +28,12 @@ sealed class GitHubError(val displayMessage: String, cause: Throwable? = null) :
         GitHubError(PrCommentsBundle.message("error.network", cause.message ?: cause::class.java.simpleName), cause)
 
     class GraphQl(val errors: List<String>) :
-        GitHubError(PrCommentsBundle.message("error.graphQl", errors.joinToString("; ").take(500)))
+        GitHubError(
+            PrCommentsBundle.message(
+                "error.graphQl",
+                errors.joinToString("; ").replace(Regex("[<>\"']"), "").take(200),
+            )
+        )
 
     class Unknown(val status: Int, val body: String) :
         GitHubError(PrCommentsBundle.message("error.unknown", status, body.take(300)))

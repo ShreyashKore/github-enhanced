@@ -61,7 +61,9 @@ class GitHubClient(
     private val http: HttpClient by lazy {
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            // Redirects are followed manually in `send()` so we can reject any hop to a
+            // non-HTTPS URL before the Authorization header would be sent to it.
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build()
     }
 
@@ -114,35 +116,73 @@ class GitHubClient(
             .header("User-Agent", userAgent)
     }
 
-    private suspend fun send(request: HttpRequest): String = withContext(Dispatchers.IO) {
-        currentCoroutineContext().ensureActive()
-        val response = try {
-            http.send(request, HttpResponse.BodyHandlers.ofString())
-        } catch (e: ProcessCanceledException) {
-            throw e // guardrail §14.8 — never swallowed
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
-            throw GitHubError.Network(e)
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw GitHubError.Network(e)
-        }
-        currentCoroutineContext().ensureActive()
-        val status = response.statusCode()
-        if (status in 200..299) return@withContext response.body()
+    private suspend fun send(request: HttpRequest, redirectsLeft: Int = MAX_REDIRECTS): String =
+        withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
+            val response = try {
+                http.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: ProcessCanceledException) {
+                throw e // guardrail §14.8 — never swallowed
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                throw GitHubError.Network(e)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw GitHubError.Network(e)
+            }
+            currentCoroutineContext().ensureActive()
+            val status = response.statusCode()
+            if (status in 200..299) return@withContext response.body()
 
-        // Bodies can contain private code; keep them out of INFO logs (guardrail §14.6).
-        log.debug("GitHub ${request.method()} ${request.uri().path} -> $status")
-        throw mapError(status, response)
+            if (status in 300..399) {
+                val location = response.headers().firstValue("location").orElse(null)
+                    ?: throw GitHubError.Network(IOException("Redirect ($status) with no Location header"))
+                if (redirectsLeft <= 0) {
+                    throw GitHubError.Network(IOException("Too many redirects"))
+                }
+                val target = try {
+                    request.uri().resolve(URI.create(location))
+                } catch (e: IllegalArgumentException) {
+                    throw GitHubError.Network(IOException("Redirect to invalid URL rejected", e))
+                }
+                if (!target.scheme.equals("https", ignoreCase = true)) {
+                    throw GitHubError.Network(
+                        IOException("Redirect to non-HTTPS URL rejected: ${target.scheme}")
+                    )
+                }
+                return@withContext send(redirectedRequest(request, target), redirectsLeft - 1)
+            }
+
+            // Bodies can contain private code; keep them out of INFO logs (guardrail §14.6).
+            log.debug("GitHub ${request.method()} ${request.uri().path} -> $status")
+            throw mapError(status, response)
+        }
+
+    /** Rebuilds [original] against [target], preserving method, headers and body. */
+    private fun redirectedRequest(original: HttpRequest, target: URI): HttpRequest {
+        val builder = HttpRequest.newBuilder(target)
+            .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
+        original.headers().map().forEach { (name, values) ->
+            values.forEach { value -> builder.header(name, value) }
+        }
+        builder.method(original.method(), original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
+        return builder.build()
     }
 
     private fun mapError(status: Int, response: HttpResponse<String>): GitHubError = when (status) {
         401 -> GitHubError.Unauthorized()
         403, 429 -> GitHubError.Forbidden(rateLimitResetAt(response))
         404 -> GitHubError.NotFound()
-        else -> GitHubError.Unknown(status, response.body().orEmpty())
+        else -> GitHubError.Unknown(status, sanitizeErrorBody(response.body().orEmpty()))
     }
+
+    /** Strips markup and collapses whitespace so an error body shown to the user can't smuggle HTML. */
+    private fun sanitizeErrorBody(body: String): String = body
+        .replace(Regex("<[^>]+>"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(200)
 
     private fun rateLimitResetAt(response: HttpResponse<String>): Instant? {
         val remaining = response.headers().firstValue("x-ratelimit-remaining").orElse(null)
@@ -157,6 +197,7 @@ class GitHubClient(
         const val CONNECT_TIMEOUT_SECONDS: Long = 15
         const val REQUEST_TIMEOUT_SECONDS: Long = 30
         const val DEFAULT_USER_AGENT: String = "pr-comments-plugin"
+        const val MAX_REDIRECTS: Int = 5
 
         @PublishedApi
         internal val JSON: Json = Json {

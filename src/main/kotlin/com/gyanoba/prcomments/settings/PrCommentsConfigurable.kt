@@ -17,6 +17,7 @@ import com.intellij.ui.dsl.builder.bindIntText
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.layout.ValidationInfoBuilder
 import com.intellij.util.ui.UIUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -58,12 +59,15 @@ class PrCommentsConfigurable(private val project: Project) :
                         .comment(PrCommentsBundle.message("settings.host.comment"))
                 }
                 row(PrCommentsBundle.message("settings.apiBaseUrl")) {
-                    textField().bindText({ apiBaseUrl }, { apiBaseUrl = it.trim() })
+                    textField()
+                        .bindText({ apiBaseUrl }, { apiBaseUrl = it.trim() })
+                        .validationOnInput { field -> warnIfNotHttps(this, field.text) }
                 }
                 row(PrCommentsBundle.message("settings.graphQlUrl")) {
                     textField()
                         .bindText({ graphQlUrl }, { graphQlUrl = it.trim() })
                         .comment(PrCommentsBundle.message("settings.url.comment"))
+                        .validationOnInput { field -> warnIfNotHttps(this, field.text) }
                 }
                 row(PrCommentsBundle.message("settings.token")) {
                     passwordField()
@@ -116,6 +120,14 @@ class PrCommentsConfigurable(private val project: Project) :
         super.reset()
         statusLabel.text = ""
     }
+
+    /** Warns rather than blocks: GitHub Enterprise Server instances can legitimately run on http:// internally. */
+    private fun warnIfNotHttps(builder: ValidationInfoBuilder, value: String) =
+        if (value.isNotBlank() && !value.startsWith("https://")) {
+            builder.warning(PrCommentsBundle.message("settings.url.https.warning"))
+        } else {
+            null
+        }
 
     /** `GET /user` against the values currently in the form, not the persisted ones. */
     private fun testConnection() {

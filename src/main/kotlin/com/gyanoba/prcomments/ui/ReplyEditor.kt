@@ -80,7 +80,7 @@ class ReplyEditor(
     private var busy = false
 
     init {
-        border = JBUI.Borders.emptyTop(6)
+        border = JBUI.Borders.empty(6, 8, 8, 8)
         editor.preferredSize = JBUI.size(0, REPLY_HEIGHT)
         addToCenter(editor)
         addToBottom(

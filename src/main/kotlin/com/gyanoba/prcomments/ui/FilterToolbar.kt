@@ -15,6 +15,7 @@ import com.intellij.openapi.actionSystem.ActionToolbar
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.KeepPopupOnPerform
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
@@ -117,7 +118,7 @@ class FilterToolbar(
                             TriState.RESOLVED -> PrCommentsBundle.message("filter.resolution.resolved")
                             TriState.UNRESOLVED -> PrCommentsBundle.message("filter.resolution.unresolved")
                         },
-                        selected = filterProvider().resolution == value,
+                        selected = { filterProvider().resolution == value },
                     ) { onFilterChange { current -> current.copy(resolution = value) } }
                 }
             )
@@ -133,7 +134,7 @@ class FilterToolbar(
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext) =
             DefaultActionGroup(
                 ReplyState.entries.map { value ->
-                    choice(label(value), selected = filterProvider().replyState == value) {
+                    choice(label(value), selected = { filterProvider().replyState == value }) {
                         onFilterChange { current -> current.copy(replyState = value) }
                     }
                 }
@@ -162,19 +163,22 @@ class FilterToolbar(
 
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext) =
             DefaultActionGroup().apply {
-                add(choice(PrCommentsBundle.message("filter.author.all"), filterProvider().authors.isEmpty()) {
+                add(choice(PrCommentsBundle.message("filter.author.all"), selected = { filterProvider().authors.isEmpty() }) {
                     onFilterChange { it.copy(authors = emptySet()) }
                 })
                 addSeparator()
-                // Multiple authors compose with OR, so these are toggles rather than a radio group.
+                // Multiple authors compose with OR, so these are toggles rather than a radio group:
+                // keepOpen=true lets a reviewer pick several without reopening the dropdown each time.
                 authorsProvider().forEach { author ->
-                    add(choice(author, author in filterProvider().authors) {
-                        onFilterChange { current ->
-                            val next = if (author in current.authors) current.authors - author
-                            else current.authors + author
-                            current.copy(authors = next)
+                    add(
+                        choice(author, selected = { author in filterProvider().authors }, keepOpen = true) {
+                            onFilterChange { current ->
+                                val next = if (author in current.authors) current.authors - author
+                                else current.authors + author
+                                current.copy(authors = next)
+                            }
                         }
-                    })
+                    )
                 }
             }
     }
@@ -189,7 +193,7 @@ class FilterToolbar(
         override fun createPopupActionGroup(button: JComponent, context: com.intellij.openapi.actionSystem.DataContext) =
             DefaultActionGroup(
                 SortKey.entries.map { key ->
-                    choice(label(key), selected = sortProvider().key == key) {
+                    choice(label(key), selected = { sortProvider().key == key }) {
                         onSortChange { it.copy(key = key) }
                     }
                 }
@@ -231,11 +235,25 @@ class FilterToolbar(
         }
     }
 
-    private fun choice(text: String, selected: Boolean, action: () -> Unit) =
+    /**
+     * A checkable popup-menu row.
+     *
+     * [selected] must be re-evaluated live (not captured once when the popup opens), and
+     * [KeepPopupOnPerform] must be set explicitly rather than left at [ToggleAction]'s own default of
+     * `IfPreferred` — which defers to the IDE-wide "keep popup open for checkboxes" setting and would
+     * make single-choice rows (Resolution, Reply state, Sort) behave inconsistently depending on that
+     * setting. [keepOpen] opts a row into staying open (for [AuthorAction]'s genuinely multi-select
+     * list); every other row closes the popup the instant it's picked.
+     */
+    private fun choice(text: String, selected: () -> Boolean, keepOpen: Boolean = false, action: () -> Unit) =
         object : DumbAwareToggleAction(text) {
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
-            override fun isSelected(e: AnActionEvent) = selected
+            override fun isSelected(e: AnActionEvent) = selected()
             override fun setSelected(e: AnActionEvent, state: Boolean) = action()
+            override fun update(e: AnActionEvent) {
+                super.update(e)
+                e.presentation.keepPopupOnPerform = if (keepOpen) KeepPopupOnPerform.Always else KeepPopupOnPerform.Never
+            }
         }
 
     companion object {

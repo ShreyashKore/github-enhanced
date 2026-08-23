@@ -160,6 +160,10 @@ object MarkdownRenderer {
     private fun sanitizeUrl(url: String): String? {
         val trimmed = url.trim()
         val lower = trimmed.lowercase()
+        // Explicit deny for schemes that could execute code, even though Swing's JEditorPane
+        // doesn't act on them in practice — defense-in-depth against a scheme the allowlist
+        // below is accidentally loosened to admit later.
+        if (lower.startsWith("javascript:") || lower.startsWith("data:")) return null
         val allowed = lower.startsWith("http://") || lower.startsWith("https://") ||
             lower.startsWith("mailto:") || trimmed.startsWith("#")
         if (!allowed) return null
