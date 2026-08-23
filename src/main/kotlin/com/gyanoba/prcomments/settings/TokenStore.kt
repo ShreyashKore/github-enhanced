@@ -26,6 +26,4 @@ object TokenStore {
             PasswordSafe.instance.set(attributes, Credentials(host, token))
         }
     }
-
-    fun hasToken(host: String): Boolean = get(host) != null
 }

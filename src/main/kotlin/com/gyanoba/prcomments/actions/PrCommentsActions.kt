@@ -123,8 +123,6 @@ class SettingsAction : DumbAwareAction(
     }
 
     companion object {
-        const val CONFIGURABLE_ID: String = "com.gyanoba.prcomments.settings"
-
         fun openSettings(project: Project) {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, PrCommentsConfigurable::class.java)
         }

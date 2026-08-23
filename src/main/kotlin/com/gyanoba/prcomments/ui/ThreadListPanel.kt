@@ -92,14 +92,6 @@ class ThreadListPanel(
         if (list.selectedValue?.nodeId != previouslySelected) onSelect(list.selectedValue)
     }
 
-    fun selectByNodeId(nodeId: String?) {
-        val index = model.items.indexOfFirst { it.nodeId == nodeId }
-        if (index >= 0) {
-            list.selectedIndex = index
-            list.ensureIndexIsVisible(index)
-        }
-    }
-
     /**
      * After a thread leaves the list (typically because it was resolved while the Unresolved filter
      * is on), keep the user moving by selecting whatever took its place (§12.3).
@@ -112,8 +104,6 @@ class ThreadListPanel(
     }
 
     fun indexOf(nodeId: String): Int = model.items.indexOfFirst { it.nodeId == nodeId }
-
-    val size: Int get() = model.size
 
     private fun emptyText(message: String, withClearLink: Boolean) {
         list.emptyText.clear()
