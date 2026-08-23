@@ -12,9 +12,11 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.actionSystem.ShortcutSet
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import javax.swing.KeyStroke
 
@@ -85,6 +87,122 @@ class ToggleResolveAction : DumbAwareAction(
     }
 
     private fun selectedThread(e: AnActionEvent): ReviewThread? = e.getData(PrCommentsDataKeys.SELECTED_THREAD)
+}
+
+private fun selectedThreads(e: AnActionEvent): List<ReviewThread> =
+    e.getData(PrCommentsDataKeys.SELECTED_THREADS).orEmpty()
+
+/** Resolves every unresolved thread in the selection (§multi-select). */
+class ResolveSelectedThreadsAction : DumbAwareAction(
+    PrCommentsBundle.lazyMessage("action.toggleResolve.resolve"),
+    PrCommentsBundle.lazyMessage("action.resolveSelected.description"),
+    AllIcons.Actions.Checked,
+) {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val threads = selectedThreads(e)
+        e.presentation.isEnabled = e.project != null && threads.any { !it.isResolved }
+        e.presentation.text = if (threads.size <= 1) {
+            PrCommentsBundle.message("action.toggleResolve.resolve")
+        } else {
+            PrCommentsBundle.message("action.resolveSelected.text", threads.size)
+        }
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val service = PrCommentsService.getInstance(project)
+        selectedThreads(e).filterNot { it.isResolved }.forEach { service.setResolved(it.nodeId, true) }
+    }
+}
+
+/** Unresolves every resolved thread in the selection (§multi-select). */
+class UnresolveSelectedThreadsAction : DumbAwareAction(
+    PrCommentsBundle.lazyMessage("action.toggleResolve.unresolve"),
+    PrCommentsBundle.lazyMessage("action.unresolveSelected.description"),
+    AllIcons.Actions.Rollback,
+) {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val threads = selectedThreads(e)
+        e.presentation.isEnabled = e.project != null && threads.any { it.isResolved }
+        e.presentation.text = if (threads.size <= 1) {
+            PrCommentsBundle.message("action.toggleResolve.unresolve")
+        } else {
+            PrCommentsBundle.message("action.unresolveSelected.text", threads.size)
+        }
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val service = PrCommentsService.getInstance(project)
+        selectedThreads(e).filter { it.isResolved }.forEach { service.setResolved(it.nodeId, false) }
+    }
+}
+
+/** Opens every selected thread's comment on github.com, one browser tab each (§multi-select). */
+class OpenSelectedInBrowserAction : DumbAwareAction(
+    PrCommentsBundle.lazyMessage("action.openInBrowser.text"),
+    PrCommentsBundle.lazyMessage("action.openSelectedInBrowser.description"),
+    AllIcons.General.Web,
+) {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        val threads = selectedThreads(e)
+        e.presentation.isEnabled = threads.isNotEmpty()
+        e.presentation.text = if (threads.size <= 1) {
+            PrCommentsBundle.message("action.openInBrowser.text")
+        } else {
+            PrCommentsBundle.message("action.openSelectedInBrowser.text", threads.size)
+        }
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        selectedThreads(e).forEach { BrowserUtil.browse(it.root.htmlUrl) }
+    }
+}
+
+/** Copies the GitHub URL of each selected thread, one per line (§multi-select). */
+class CopySelectedLinksAction : DumbAwareAction(
+    PrCommentsBundle.lazyMessage("action.copyLinks.text"),
+    PrCommentsBundle.lazyMessage("action.copyLinks.description"),
+    AllIcons.Actions.Copy,
+) {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = selectedThreads(e).isNotEmpty()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val links = selectedThreads(e).joinToString("\n") { it.root.htmlUrl }
+        CopyPasteManager.getInstance().setContents(StringSelection(links))
+    }
+}
+
+/**
+ * Copies the selected thread(s) as a compact prompt an AI coding assistant can act on directly —
+ * see [AiPromptFormatter] for the format (§multi-select).
+ */
+class CopySelectedForAiAction : DumbAwareAction(
+    PrCommentsBundle.lazyMessage("action.copyForAi.text"),
+    PrCommentsBundle.lazyMessage("action.copyForAi.description"),
+    AllIcons.Actions.Copy,
+) {
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = selectedThreads(e).isNotEmpty()
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val threads = selectedThreads(e)
+        if (threads.isEmpty()) return
+        CopyPasteManager.getInstance().setContents(StringSelection(AiPromptFormatter.format(threads)))
+    }
 }
 
 class SetPrNumberAction : DumbAwareAction(

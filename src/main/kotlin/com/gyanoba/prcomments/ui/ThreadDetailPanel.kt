@@ -234,6 +234,7 @@ class ThreadDetailPanel(
         currentStateJob = null
 
         if (newThread == null) {
+            emptyLabel.text = PrCommentsBundle.message("detail.empty")
             body.isVisible = false
             emptyLabel.isVisible = true
             snapshotPreview.clear()
@@ -257,6 +258,21 @@ class ThreadDetailPanel(
         }
         replyEditor.setBusy(newThread.nodeId in service.busyThreads.value)
 
+        revalidate()
+        repaint()
+    }
+
+    /** Several rows are selected at once; the single-thread view doesn't apply (§multi-select). */
+    fun showMultiSelected(count: Int) {
+        thread = null
+        currentStateJob?.cancel()
+        currentStateJob = null
+        body.isVisible = false
+        emptyLabel.text = PrCommentsBundle.message("detail.multiSelected", count)
+        emptyLabel.isVisible = true
+        snapshotPreview.clear()
+        currentPreview.clear()
+        commentsPanel.removeAll()
         revalidate()
         repaint()
     }

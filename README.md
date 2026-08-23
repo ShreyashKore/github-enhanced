@@ -21,6 +21,8 @@ looks like in your working tree right now.
 | **Shows the line now** | The same line in your working tree, with drift correction and an honest state chip: `Current`, `Moved 42 → 57`, `Changed since comment`, `Line removed`, `File deleted`. |
 | **Navigates** | Double-click or Enter jumps the editor to the drift-corrected line. When the line is gone, it opens GitHub instead of guessing. |
 | **Replies and resolves** | Inline reply box with `Cmd/Ctrl+Enter`, a **Reply and Resolve** button, and optimistic updates that roll back with a Retry action if the request fails. |
+| **Multi-selects** | Ctrl/Cmd-click or Shift-click rows to select several threads at once, then resolve, unresolve, open or copy all of them in one action. |
+| **Copies for AI** | Turns the selected thread(s) into a compact prompt — file, line and full comment thread, no markup or metadata to burn tokens — ready to paste into an AI coding assistant. |
 | **Refreshes** | Manually (toolbar or F5) and on a timer while the tool window is visible, without stealing your selection, scroll position or unsent draft. |
 
 ## Requirements
@@ -76,6 +78,46 @@ Open the **PR Comments** tool window on the right rail.
 
 Right-click a row for **Resolve conversation** and **Open on GitHub**.
 
+### Working with several threads at once
+
+Ctrl/Cmd-click or Shift-click rows in the list to select more than one. Right-click the selection
+(or press `Cmd/Ctrl+C`) for:
+
+| Action | What it does |
+|---|---|
+| **Resolve N Conversations** / **Unresolve N Conversations** | Bulk-toggles every thread in the selection that isn't already in that state. |
+| **Open N on GitHub** | Opens each selected thread's comment in its own browser tab. |
+| **Copy Links** | Copies the GitHub URL of each selected thread, one per line. |
+| **Copy for AI** (`Cmd/Ctrl+C`) | Copies the selection as a compact prompt — file, line and the full comment thread for each — ready to hand to an AI coding assistant to fix. |
+
+Double-click, Enter and the single-thread context menu items all still work the normal way when
+exactly one row is selected.
+
+#### The "Copy for AI" format
+
+```
+Fix these 2 GitHub PR review comments:
+
+src/main/kotlin/Foo.kt:42
+- This will NPE if `user` is null — guard it.
+  ↳ Good catch, added a null check in 9f2a1c3.
+
+src/main/kotlin/Bar.kt:10
+- Rename this to something that doesn't shadow the outer `result`.
+```
+
+One block per thread: `path:line`, then the root comment (`-`) and any replies (`↳`), each verbatim
+(Markdown, code spans and all) — just whitespace-collapsed and indented so a multi-line comment stays
+visually attached to its bullet.
+
+Deliberately **left out**: the diff hunk, comment authors, and GitHub links. An AI assistant working
+in the same repo can already open `path:line` and run `git blame` itself — pasting that context again
+would just spend tokens telling it something it can look up in one tool call. What it *can't* get any
+other way is where to look and what was actually asked for, including anything a reply narrowed or
+changed — that's exactly what's kept. The formatter lives in
+[`AiPromptFormatter.kt`](src/main/kotlin/com/gyanoba/prcomments/actions/AiPromptFormatter.kt); keep
+this section in sync if you change it.
+
 ### Reading the state chip
 
 | Chip | Meaning |
@@ -117,7 +159,8 @@ src/main/kotlin/com/gyanoba/prcomments/
 ├── service/    PrCommentsService (state, refresh, mutations), settings
 ├── ui/         tool window, list, filters, detail pane, previews, Markdown renderer
 ├── settings/   configurable page and the PasswordSafe wrapper
-└── actions/    refresh, toggle resolve, open in browser, set PR number
+└── actions/    refresh, resolve, open in browser, set PR number, multi-select bulk actions,
+                AI-prompt formatting
 ```
 
 Threading rules the code holds itself to: GitHub and git calls on `Dispatchers.IO`, VFS and Document

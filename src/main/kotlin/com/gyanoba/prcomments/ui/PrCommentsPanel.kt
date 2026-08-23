@@ -1,12 +1,16 @@
 package com.gyanoba.prcomments.ui
 
 import com.gyanoba.prcomments.PrCommentsBundle
+import com.gyanoba.prcomments.actions.CopySelectedForAiAction
+import com.gyanoba.prcomments.actions.CopySelectedLinksAction
 import com.gyanoba.prcomments.actions.OpenInBrowserAction
+import com.gyanoba.prcomments.actions.OpenSelectedInBrowserAction
 import com.gyanoba.prcomments.actions.REFRESH_SHORTCUT
 import com.gyanoba.prcomments.actions.RefreshAction
+import com.gyanoba.prcomments.actions.ResolveSelectedThreadsAction
 import com.gyanoba.prcomments.actions.SetPrNumberAction
 import com.gyanoba.prcomments.actions.SettingsAction
-import com.gyanoba.prcomments.actions.ToggleResolveAction
+import com.gyanoba.prcomments.actions.UnresolveSelectedThreadsAction
 import com.gyanoba.prcomments.model.ReviewThread
 import com.gyanoba.prcomments.model.ThreadQuery
 import com.gyanoba.prcomments.service.PrCommentsService
@@ -15,8 +19,10 @@ import com.gyanoba.prcomments.service.loadedOrNull
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.CommonShortcuts
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.thisLogger
@@ -61,7 +67,7 @@ class PrCommentsPanel(
 
     private val listPanel = ThreadListPanel(
         parentDisposable = parentDisposable,
-        onSelect = ::onThreadSelected,
+        onSelectionChanged = ::onSelectionChanged,
         onActivate = ::navigateTo,
         onClearFilters = { service.clearFilters() },
     )
@@ -109,6 +115,7 @@ class PrCommentsPanel(
     override fun uiDataSnapshot(sink: DataSink) {
         sink[PrCommentsDataKeys.PANEL] = this
         listPanel.selected?.let { sink[PrCommentsDataKeys.SELECTED_THREAD] = it }
+        sink[PrCommentsDataKeys.SELECTED_THREADS] = listPanel.selectedThreads
     }
 
     private fun header(): JPanel = BorderLayoutPanel().apply {
@@ -137,7 +144,19 @@ class PrCommentsPanel(
     }
 
     private fun installContextMenu() {
-        val group = DefaultActionGroup(ToggleResolveAction(), OpenInBrowserAction())
+        val copyForAi = CopySelectedForAiAction()
+        // Ctrl/Cmd+C has no other meaning on this list (nothing renders as copyable text), so it's
+        // free to double as the shortcut for the AI-prompt copy (§multi-select).
+        copyForAi.registerCustomShortcutSet(CommonShortcuts.getCopy(), listPanel.list, parentDisposable)
+        val group = DefaultActionGroup(
+            ResolveSelectedThreadsAction(),
+            UnresolveSelectedThreadsAction(),
+            Separator.getInstance(),
+            OpenSelectedInBrowserAction(),
+            CopySelectedLinksAction(),
+            Separator.getInstance(),
+            copyForAi,
+        )
         PopupHandler.installPopupMenu(listPanel.list, group, ActionPlaces.TOOLWINDOW_POPUP)
     }
 
@@ -244,9 +263,17 @@ class PrCommentsPanel(
         is ViewState.Loaded -> null
     }
 
-    private fun onThreadSelected(thread: ReviewThread?) {
-        detailPanel.show(thread)
-        thread?.let { service.markThreadSeen(it.nodeId) }
+    private fun onSelectionChanged(threads: List<ReviewThread>) {
+        when (threads.size) {
+            0 -> detailPanel.show(null)
+            1 -> {
+                val thread = threads.single()
+                detailPanel.show(thread)
+                service.markThreadSeen(thread.nodeId)
+            }
+
+            else -> detailPanel.showMultiSelected(threads.size)
+        }
     }
 
     /** F9: jump the editor to the drift-corrected location of the commented line. */

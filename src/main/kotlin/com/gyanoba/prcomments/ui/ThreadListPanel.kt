@@ -22,7 +22,7 @@ import javax.swing.ListSelectionModel
  */
 class ThreadListPanel(
     parentDisposable: Disposable,
-    private val onSelect: (ReviewThread?) -> Unit,
+    private val onSelectionChanged: (List<ReviewThread>) -> Unit,
     private val onActivate: (ReviewThread) -> Unit,
     private val onClearFilters: () -> Unit,
 ) : BorderLayoutPanel() {
@@ -32,18 +32,20 @@ class ThreadListPanel(
     private var suppressSelectionEvents = false
 
     val list: JBList<ReviewThread> = JBList(model).apply {
-        selectionMode = ListSelectionModel.SINGLE_SELECTION
+        selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
         cellRenderer = ThreadListCellRenderer { newThreadIds }
         addListSelectionListener { event ->
-            if (!event.valueIsAdjusting && !suppressSelectionEvents) onSelect(selectedValue)
+            if (!event.valueIsAdjusting && !suppressSelectionEvents) onSelectionChanged(selectedValuesList)
         }
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) selectedValue?.let(onActivate)
+                // A double-click while several rows are selected is ambiguous about which one to
+                // open, so only navigate when exactly one thread is the target.
+                if (e.clickCount == 2 && selectedValuesList.size == 1) selectedValue?.let(onActivate)
             }
         })
         registerKeyboardAction(
-            { selectedValue?.let(onActivate) },
+            { if (selectedValuesList.size == 1) selectedValue?.let(onActivate) },
             KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0),
             WHEN_ANCESTOR_OF_FOCUSED_COMPONENT,
         )
@@ -56,6 +58,9 @@ class ThreadListPanel(
     }
 
     val selected: ReviewThread? get() = list.selectedValue
+
+    /** All rows currently selected, in list order — empty, one, or many (§multi-select). */
+    val selectedThreads: List<ReviewThread> get() = list.selectedValuesList
 
     /** Replaces the contents, keeping the selected node id and the scroll offset where possible. */
     fun setThreads(threads: List<ReviewThread>, newIds: Set<String>, filtersActive: Boolean, hasAnyThread: Boolean) {
@@ -89,7 +94,7 @@ class ThreadListPanel(
         )
 
         // The selection may have vanished with the thread it pointed at.
-        if (list.selectedValue?.nodeId != previouslySelected) onSelect(list.selectedValue)
+        if (list.selectedValue?.nodeId != previouslySelected) onSelectionChanged(list.selectedValuesList)
     }
 
     /**
