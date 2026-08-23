@@ -29,10 +29,39 @@ The alternative is Ultimate via `intellijIdea("2025.3.5")`, which gives newer pa
 floor, at the cost of a licence prompt on every `runIde` in an unlicensed sandbox. The plugin needs
 nothing from Ultimate — only `Git4Idea`, which Community bundles.
 
+### On the Kotlin compiler version
+
+`org.jetbrains.kotlin.jvm` is pinned to **2.2.20**, and must never exceed the `kotlin-stdlib`
+bundled in the target IDE. The template scaffolded 2.3.20, which is broken at runtime:
+
+Kotlin 2.3 emits `@DebugMetadata(v=2)` on every suspend lambda; a 2.2.x stdlib only understands
+`v=1`. The moment any coroutine is **cancelled**, `kotlinx-coroutines` tries to recover its stack
+trace via `DebugMetadataKt.getStackTraceElement` — resolved against the *platform's* stdlib, not
+ours, because we correctly exclude our own — and throws:
+
+```
+kotlinx.coroutines.CoroutinesInternalError: Fatal exception in coroutines machinery
+Caused by: java.lang.IllegalStateException: Debug metadata version mismatch. Expected: 1, got 2.
+```
+
+which the IDE surfaces as a SEVERE internal error. This is not hypothetical: it fired repeatedly
+just from opening the tool window, whose `setToolWindowVisible` cancels and relaunches the
+auto-refresh job on every visibility change.
+
+IC 252 bundles stdlib 2.2.0 and IU 253 bundles 2.2.20, so 2.2.x is the ceiling for both. Verify a
+change here by checking a suspend lambda actually emits `v=1`:
+
+```bash
+javap -v -p 'build/classes/kotlin/main/.../PrCommentsService$setToolWindowVisible$1.class' | grep 'v='
+```
+
+Unit tests do not catch this — they run against a stdlib on the test classpath, not the IDE's.
+
 ## Standing risks
 
 | Risk | Mitigation in the code |
 |---|---|
+| Kotlin compiler newer than the target IDE's stdlib | Kotlin pinned to 2.2.20; see above. Raising it without raising the platform reintroduces the `CoroutinesInternalError` on every coroutine cancellation. |
 | `diffHunk` truncated or absent (common for outdated threads) | `DiffHunkParser.parse` returns null rather than throwing; the detail pane shows "Diff snapshot unavailable" and the thread stays usable via **Open on GitHub**. No blob is fetched just to fill this in. |
 | GraphQL schema field renames | `X-GitHub-Api-Version: 2022-11-28` is pinned on every request. `GitHubClient.graphQl` inspects the `errors` array even on HTTP 200 and raises `GitHubError.GraphQl` carrying GitHub's own message, which names the offending field. Queries live as plain strings in `GraphQlQueries` so they can be diffed against the schema by eye. |
 | Rate limits from aggressive auto-refresh | Default interval 120 s, clamped to 30–3600 s. The timer only runs while the tool window is visible. Each timed refresh first issues the tiny `pullRequest { updatedAt }` query and skips the full fetch when nothing changed. `403`/`429` responses are mapped to `GitHubError.Forbidden` carrying `x-ratelimit-reset`, shown as "resets at 14:32". |
