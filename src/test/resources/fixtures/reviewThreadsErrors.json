@@ -1,0 +1,6 @@
+{
+  "data": null,
+  "errors": [
+    { "message": "Could not resolve to a Repository with the name 'acme/nope'.", "type": "NOT_FOUND" }
+  ]
+}

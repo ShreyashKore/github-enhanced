@@ -1,5 +1,14 @@
 [versions]
-junit = "4.13.2"
+junit4 = "4.13.2"
+junitJupiter = "5.11.4"
+junitPlatform = "1.11.4"
+# Pinned to the version IntelliJ Platform 2025.3 ships in lib/module-intellij.libraries.kotlinx.serialization.*.jar
+# so the plugin behaves identically whether its own copy or the platform's copy wins on the classpath.
+kotlinxSerialization = "1.8.1"
 
 [libraries]
-junit = { module = "junit:junit", version.ref = "junit" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
+junit-vintage-engine = { module = "org.junit.vintage:junit-vintage-engine", version.ref = "junitJupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

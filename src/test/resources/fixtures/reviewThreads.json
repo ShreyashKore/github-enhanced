@@ -1,0 +1,99 @@
+{
+  "data": {
+    "viewer": { "login": "octocat" },
+    "repository": {
+      "pullRequest": {
+        "number": 123,
+        "title": "Add rate limiting to the ingest worker",
+        "url": "https://github.com/acme/widgets/pull/123",
+        "updatedAt": "2026-03-02T09:15:44Z",
+        "headRefOid": "5f1c3b2a9d4e6f708192a3b4c5d6e7f809a1b2c3",
+        "baseRefOid": "0011223344556677889900aabbccddeeff001122",
+        "reviewThreads": {
+          "pageInfo": { "hasNextPage": false, "endCursor": "Y3Vyc29yOnYyOpHOAAEC" },
+          "nodes": [
+            {
+              "id": "PRRT_kwDOAAAA1s4AAQID",
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "src/main/kotlin/Ingest.kt",
+              "line": 42,
+              "startLine": null,
+              "originalLine": 42,
+              "originalStartLine": null,
+              "diffSide": "RIGHT",
+              "resolvedBy": null,
+              "comments": {
+                "pageInfo": { "hasNextPage": false, "endCursor": null },
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOAAAA1s5AAQID",
+                    "databaseId": 1234567890,
+                    "body": "This allocates on every tick. Can we hoist it?",
+                    "createdAt": "2026-03-01T10:00:00Z",
+                    "updatedAt": "2026-03-01T10:00:00Z",
+                    "url": "https://github.com/acme/widgets/pull/123#discussion_r1234567890",
+                    "diffHunk": "@@ -39,5 +39,6 @@ class Ingest {\n     private val clock = Clock.systemUTC()\n \n     fun tick() {\n-        val buffer = ByteArray(4096)\n+        val buffer = ByteArray(8192)\n         drain(buffer)",
+                    "author": {
+                      "login": "alice",
+                      "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4",
+                      "url": "https://github.com/alice"
+                    },
+                    "originalCommit": { "oid": "aabbccddeeff00112233445566778899aabbccdd" },
+                    "replyTo": null
+                  },
+                  {
+                    "id": "PRRC_kwDOAAAA1s5AAQIE",
+                    "databaseId": 1234567891,
+                    "body": "Good catch, hoisted in 5f1c3b2.",
+                    "createdAt": "2026-03-01T11:30:00Z",
+                    "updatedAt": "2026-03-01T11:31:00Z",
+                    "url": "https://github.com/acme/widgets/pull/123#discussion_r1234567891",
+                    "diffHunk": null,
+                    "author": {
+                      "login": "octocat",
+                      "avatarUrl": "https://avatars.githubusercontent.com/u/2?v=4",
+                      "url": "https://github.com/octocat"
+                    },
+                    "originalCommit": null,
+                    "replyTo": { "id": "PRRC_kwDOAAAA1s5AAQID" }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOAAAA1s4AAQIF",
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "docs/README.md",
+              "line": null,
+              "startLine": null,
+              "originalLine": 7,
+              "originalStartLine": null,
+              "diffSide": "LEFT",
+              "resolvedBy": { "login": "bob" },
+              "comments": {
+                "pageInfo": { "hasNextPage": false, "endCursor": null },
+                "nodes": [
+                  {
+                    "id": "PRRC_kwDOAAAA1s5AAQIG",
+                    "databaseId": 1234567892,
+                    "body": "Typo: recieve -> receive",
+                    "createdAt": "2026-02-28T08:00:00Z",
+                    "updatedAt": "2026-02-28T08:00:00Z",
+                    "url": "https://github.com/acme/widgets/pull/123#discussion_r1234567892",
+                    "diffHunk": "@@ -5,3 +5,3 @@\n Widgets\n-We recieve events.\n+We receive events.",
+                    "author": null,
+                    "originalCommit": { "oid": "00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff" },
+                    "replyTo": null
+                  }
+                ]
+              }
+            },
+            null
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,33 +1,37 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
-    <id>com.gyanoba.github-enhanced</id>
+    <id>com.gyanoba.prcomments</id>
+    <name>PR Comments</name>
+    <vendor email="koreshreyash@gmail.com" url="https://gyanoba.com">Gyanoba</vendor>
 
-    <!-- Public plugin name should be written in Title Case.
-     Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
-    <name>Github-enhanced</name>
-
-    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor url="https://www.yourcompany.com">YourCompany</vendor>
-
-    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
-         Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-        Enter short description for your plugin here.<br>
-        <em>most HTML tags may be used</em>
+        Review every GitHub pull request comment without leaving the IDE.<br><br>
+        <ul>
+          <li>Detects the repository and the pull request for the current branch.</li>
+          <li>Lists every review thread with filters for resolved/unresolved, replied/awaiting reply,
+              outdated, author, path and free text.</li>
+          <li>Shows the diff hunk exactly as the code looked when the comment was written, next to the
+              current state of that line in your working tree, with a drift-corrected line number.</li>
+          <li>Reply to and resolve threads inline.</li>
+        </ul>
         ]]></description>
 
-    <!-- Product and plugin compatibility requirements.
-         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
+    <depends>Git4Idea</depends>
 
-    <resource-bundle>messages.MyMessageBundle</resource-bundle>
+    <resource-bundle>messages.PrCommentsBundle</resource-bundle>
 
-    <!-- Extensions defined by the plugin.
-         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="MyToolWindow" factoryClass="com.gyanoba.MyToolWindowFactory"
-                    icon="AllIcons.Toolwindows.ToolWindowPalette"/>
+        <toolWindow id="PR Comments"
+                    anchor="right"
+                    icon="/icons/prComments.svg"
+                    factoryClass="com.gyanoba.prcomments.ui.PrCommentsToolWindowFactory"/>
+
+        <projectConfigurable id="com.gyanoba.prcomments.settings"
+                             instance="com.gyanoba.prcomments.settings.PrCommentsConfigurable"
+                             displayName="PR Comments"
+                             parentId="tools"/>
+
+        <notificationGroup id="PR Comments" displayType="BALLOON"/>
     </extensions>
-    
 </idea-plugin>
