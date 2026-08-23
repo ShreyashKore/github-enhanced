@@ -62,8 +62,14 @@ Then **Settings → Plugins → ⚙ → Install Plugin from Disk…** and pick t
 the plugin fetch a file at the PR head commit when that object is not in your local clone.
 
 The token is stored in the IDE's [`PasswordSafe`](https://plugins.jetbrains.com/docs/intellij/persisting-sensitive-data.html)
-— the system keychain on macOS, the credential store elsewhere. It is never written to `.idea/` or
-any file in the project, and never logged.
+— the system keychain on macOS, the credential store elsewhere, keyed by host so github.com and an
+Enterprise instance each keep their own. It is never written to `.idea/` or any file in the project,
+and never logged.
+
+On the wire it goes to one place and one place only: the configured `https` endpoint. Plain `http`
+is rejected outright (loopback aside, for local test servers), and a redirect to any other origin is
+refused rather than followed, so the `Authorization` header is never replayed to a host that is not
+the one you configured.
 
 ## Using it
 

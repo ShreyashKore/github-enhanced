@@ -11,6 +11,7 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogPanel
+import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.RowLayout
 import com.intellij.ui.dsl.builder.bindIntText
@@ -23,6 +24,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URI
+import java.net.URISyntaxException
 import javax.swing.JLabel
 
 /**
@@ -41,13 +44,22 @@ class PrCommentsConfigurable(private val project: Project) :
     private var autoRefresh: Boolean = true
     private var refreshInterval: Int = PrCommentsSettings.DEFAULT_REFRESH_SECONDS
 
+    /**
+     * The token exactly as it was read for the host in the form. [isModified] compares against this
+     * instead of re-reading [TokenStore] — that read can block on the OS keychain and `isModified`
+     * is polled on the EDT — and [apply] uses it to tell a token the user typed apart from one that
+     * was merely loaded for a host they have since changed.
+     */
+    private var loadedToken: String = ""
+
     private val statusLabel = JLabel().apply { foreground = UIUtil.getContextHelpForeground() }
 
     override fun createPanel(): DialogPanel {
         host = settings.githubHost
         apiBaseUrl = settings.apiBaseUrl
         graphQlUrl = settings.graphQlUrl
-        token = TokenStore.get(host).orEmpty()
+        loadedToken = TokenStore.get(host).orEmpty()
+        token = loadedToken
         autoRefresh = settings.autoRefreshEnabled
         refreshInterval = settings.refreshIntervalSeconds
 
@@ -61,13 +73,13 @@ class PrCommentsConfigurable(private val project: Project) :
                 row(PrCommentsBundle.message("settings.apiBaseUrl")) {
                     textField()
                         .bindText({ apiBaseUrl }, { apiBaseUrl = it.trim() })
-                        .validationOnInput { field -> warnIfNotHttps(this, field.text) }
+                        .validationOnInput { field -> requireHttps(this, field.text) }
                 }
                 row(PrCommentsBundle.message("settings.graphQlUrl")) {
                     textField()
                         .bindText({ graphQlUrl }, { graphQlUrl = it.trim() })
                         .comment(PrCommentsBundle.message("settings.url.comment"))
-                        .validationOnInput { field -> warnIfNotHttps(this, field.text) }
+                        .validationOnInput { field -> requireHttps(this, field.text) }
                 }
                 row(PrCommentsBundle.message("settings.token")) {
                     passwordField()
@@ -99,19 +111,29 @@ class PrCommentsConfigurable(private val project: Project) :
         graphQlUrl != settings.graphQlUrl ||
         autoRefresh != settings.autoRefreshEnabled ||
         refreshInterval != settings.refreshIntervalSeconds ||
-        token != TokenStore.get(settings.githubHost).orEmpty()
+        token != loadedToken
 
     override fun apply() {
         super.apply()
-        val previousHost = settings.githubHost
         settings.githubHost = host
         settings.apiBaseUrl = apiBaseUrl
         settings.graphQlUrl = graphQlUrl
         settings.autoRefreshEnabled = autoRefresh
         settings.refreshIntervalSeconds = refreshInterval
 
-        if (previousHost != settings.githubHost) TokenStore.set(previousHost, null)
-        TokenStore.set(settings.githubHost, token.ifBlank { null })
+        val newHost = settings.githubHost
+        // Only a token the user actually typed is written, and only under the host now in the form.
+        // An untouched field still holds the secret loaded for the *previous* host; re-saving that
+        // under a host the user has just changed would silently re-target one instance's PAT at
+        // another. Tokens belonging to other hosts are left in place — they are keyed per host on
+        // purpose, so switching back finds the right one.
+        if (token != loadedToken) TokenStore.set(newHost, token.ifBlank { null })
+
+        loadedToken = TokenStore.get(newHost).orEmpty()
+        if (token != loadedToken) {
+            token = loadedToken
+            reset() // push the token that belongs to the new host into the field
+        }
 
         PrCommentsService.getInstance(project).refresh(force = true)
     }
@@ -121,13 +143,30 @@ class PrCommentsConfigurable(private val project: Project) :
         statusLabel.text = ""
     }
 
-    /** Warns rather than blocks: GitHub Enterprise Server instances can legitimately run on http:// internally. */
-    private fun warnIfNotHttps(builder: ValidationInfoBuilder, value: String) =
-        if (value.isNotBlank() && !value.startsWith("https://")) {
-            builder.warning(PrCommentsBundle.message("settings.url.https.warning"))
-        } else {
-            null
+    override fun disposeUIResources() {
+        // Nothing can scrub a String from the heap, but dropping the last reference keeps the PAT
+        // from outliving the dialog in a retained configurable.
+        token = ""
+        loadedToken = ""
+        super.disposeUIResources()
+    }
+
+    /**
+     * Blocks rather than warns: the PAT is sent to this URL on every request, so plain http would
+     * put it on the wire in the clear. Loopback stays allowed for local test servers.
+     */
+    private fun requireHttps(builder: ValidationInfoBuilder, value: String): ValidationInfo? {
+        if (value.isBlank()) return null
+        val uri = try {
+            URI(value)
+        } catch (_: URISyntaxException) {
+            return builder.error(PrCommentsBundle.message("settings.url.https.error"))
         }
+        val scheme = uri.scheme?.lowercase()
+        val secure = scheme == "https" ||
+            (scheme == "http" && uri.host?.let { GitHubClient.isLoopback(it) } == true)
+        return if (secure) null else builder.error(PrCommentsBundle.message("settings.url.https.error"))
+    }
 
     /** `GET /user` against the values currently in the form, not the persisted ones. */
     private fun testConnection() {

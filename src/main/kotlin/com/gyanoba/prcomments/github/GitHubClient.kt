@@ -61,8 +61,9 @@ class GitHubClient(
     private val http: HttpClient by lazy {
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-            // Redirects are followed manually in `send()` so we can reject any hop to a
-            // non-HTTPS URL before the Authorization header would be sent to it.
+            // Redirects are followed manually in `send()`: the JDK would carry the Authorization
+            // header along to whatever host the Location points at, so every hop is checked to be
+            // same-origin before the token is replayed to it.
             .followRedirects(HttpClient.Redirect.NEVER)
             .build()
     }
@@ -107,13 +108,34 @@ class GitHubClient(
     )
 
     private fun requestBuilder(url: String): HttpRequest.Builder {
+        // Checked before the token is read, so a bad endpoint can never put the PAT on the wire.
+        val uri = checkedUri(url)
         val token = tokenProvider()?.takeIf { it.isNotBlank() } ?: throw GitHubError.NoToken()
-        return HttpRequest.newBuilder(URI.create(url))
+        return HttpRequest.newBuilder(uri)
             .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
             .header("Authorization", "Bearer $token")
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .header("User-Agent", userAgent)
+    }
+
+    /**
+     * Parses [url] and rejects anything that would send the PAT in the clear. Loopback is the one
+     * exception, so a local mock server can still be pointed at during development.
+     */
+    private fun checkedUri(url: String): URI {
+        val uri = try {
+            URI.create(url)
+        } catch (e: IllegalArgumentException) {
+            throw GitHubError.InvalidEndpoint(url, e)
+        }
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host
+        if (host.isNullOrEmpty() || (scheme != "https" && scheme != "http")) {
+            throw GitHubError.InvalidEndpoint(url)
+        }
+        if (scheme == "http" && !isLoopback(host)) throw GitHubError.InsecureEndpoint(host)
+        return uri
     }
 
     private suspend fun send(request: HttpRequest, redirectsLeft: Int = MAX_REDIRECTS): String =
@@ -146,10 +168,13 @@ class GitHubClient(
                 } catch (e: IllegalArgumentException) {
                     throw GitHubError.Network(IOException("Redirect to invalid URL rejected", e))
                 }
-                if (!target.scheme.equals("https", ignoreCase = true)) {
-                    throw GitHubError.Network(
-                        IOException("Redirect to non-HTTPS URL rejected: ${target.scheme}")
-                    )
+                // The redirected request replays every header, Authorization included. Anything but
+                // the exact same origin — a scheme downgrade, another host, another port — would
+                // hand the PAT to a party that is not the configured GitHub, so it is refused
+                // rather than followed. Same-origin hops (a renamed repo, a trailing slash) still
+                // work.
+                if (!isSameOrigin(request.uri(), target)) {
+                    throw GitHubError.CrossOriginRedirect(originOf(target))
                 }
                 return@withContext send(redirectedRequest(request, target), redirectsLeft - 1)
             }
@@ -194,6 +219,40 @@ class GitHubClient(
     }
 
     companion object {
+        /** Same scheme, same host, same effective port — the bar a hop must clear to keep the token. */
+        internal fun isSameOrigin(from: URI, to: URI): Boolean {
+            val fromHost = from.host ?: return false
+            val toHost = to.host ?: return false
+            return from.scheme.equals(to.scheme, ignoreCase = true) &&
+                fromHost.equals(toHost, ignoreCase = true) &&
+                effectivePort(from) == effectivePort(to)
+        }
+
+        private fun effectivePort(uri: URI): Int = when {
+            uri.port != -1 -> uri.port
+            uri.scheme.equals("https", ignoreCase = true) -> 443
+            uri.scheme.equals("http", ignoreCase = true) -> 80
+            else -> -1
+        }
+
+        private fun originOf(uri: URI): String =
+            "${uri.scheme.orEmpty()}://${uri.host.orEmpty()}" + if (uri.port != -1) ":${uri.port}" else ""
+
+        private val IPV4_LITERAL = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""")
+
+        /**
+         * Loopback and nothing else. Matched on literals only — a *name* is never resolved here,
+         * both to keep this off the network and because `127.example.com` is a registrable domain
+         * someone else can own, not a local address.
+         */
+        internal fun isLoopback(host: String): Boolean {
+            val bare = host.removeSurrounding("[", "]")
+            if (bare.equals("localhost", ignoreCase = true)) return true
+            if (bare == "::1" || bare == "0:0:0:0:0:0:0:1") return true
+            val octets = IPV4_LITERAL.matchEntire(bare)?.groupValues?.drop(1)?.map { it.toInt() } ?: return false
+            return octets.all { it in 0..255 } && octets[0] == 127
+        }
+
         const val CONNECT_TIMEOUT_SECONDS: Long = 15
         const val REQUEST_TIMEOUT_SECONDS: Long = 30
         const val DEFAULT_USER_AGENT: String = "pr-comments-plugin"
