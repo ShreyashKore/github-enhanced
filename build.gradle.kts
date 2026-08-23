@@ -11,7 +11,11 @@ plugins {
 dependencies {
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdea("2025.3.5")
+        // Community, per the plan's locked target (§2): Git4Idea is bundled here too, and an
+        // unlicensed Community sandbox does not prompt for a licence on every runIde.
+        // 2025.2.6.3 (build 252.28539.97) is the newest Community the Gradle plugin will resolve —
+        // it refuses every IC coordinate from 253 onwards, since JetBrains stopped publishing it.
+        intellijIdeaCommunity("2025.2.6.3")
         bundledPlugin("Git4Idea")
         testFramework(TestFrameworkType.Platform)
     }
@@ -45,9 +49,10 @@ kotlin {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            // Compiled against IntelliJ Platform 253 (2025.3.5), so 253 is the honest lower bound.
-            // See RISKS.md for the note on lowering this to 243 once a 2024.3 build target is wired up.
-            sinceBuild = "253"
+            // Compiled against IntelliJ Platform 252 (IDEA Community 2025.2.6.3), so 252 is the
+            // honest lower bound. This must track the target above: declaring a build the code was
+            // not compiled against is how plugins ship NoSuchMethodError.
+            sinceBuild = "252"
             untilBuild = provider { null }
         }
     }

@@ -7,10 +7,27 @@ and what would have to change to remove the risk entirely.
 
 | Plan says | What was built | Why |
 |---|---|---|
-| Dev target IntelliJ IDEA Community 2024.3, `sinceBuild = "243"` | IntelliJ IDEA 2025.3.5 (build 253), `sinceBuild = "253"` | The scaffolded template already pinned 2025.3.5 and the plan explicitly says to verify versions before writing build files. Declaring 243 while compiling against 253 is the classic way to ship a plugin that throws `NoSuchMethodError` on older IDEs, so the lower bound is set to what the code is actually compiled and verified against. To genuinely support 243, switch `intellijIdea("2025.3.5")` to a 2024.3 target, re-run `verifyPlugin`, and only then lower `sinceBuild`. |
+| Dev target IntelliJ IDEA Community **2024.3**, `sinceBuild = "243"` | IntelliJ IDEA Community **2025.2.6.3** (build 252.28539.97), `sinceBuild = "252"` | The plan says to verify versions before writing build files. The template scaffolded an Ultimate 253 target; that was moved to Community both to match §2 and to drop the licence prompt on `runIde`, which forced the pin down to the 252 line (see below). `sinceBuild` matches what the code is compiled and verified against. To genuinely support 243, move the pin to a 2024.3 target, re-run `verifyPlugin`, and only then lower `sinceBuild`. |
 | §11.1 "Stage A — the easy path": short-circuit to `EXACT` when `localHeadSha == pullRequest.headRefOid && !isOutdated` | `LineMapper` always runs the Stage B comparison | Stage A's condition is not sufficient: the working tree can hold uncommitted edits, and unsaved editor changes, while HEAD still equals the PR head. Stage B produces `EXACT` for itself when nothing moved (an empty fragment list), so the fast path bought a class of silently-wrong line numbers for no behavioural gain. Costs one `git show` per file, cached by `(path, revision)`. |
 | §9.2 "custom `ColoredListCellRenderer`" | A `JPanel` of three `SimpleColoredComponent`s implementing `ListCellRenderer` | `ColoredListCellRenderer` extends `SimpleColoredComponent`, which renders a single line. The three-line row in the plan needs three of them stacked. Still platform components, still theme-aware. |
 | §15 "Plain JUnit5" for every layer | JUnit 5 for the pure tests; the platform test runs as JUnit 4 through the vintage engine | `BasePlatformTestCase` is a JUnit 3/4 base class. The `test` task uses `useJUnitPlatform()` with `junit-vintage-engine` on the runtime classpath so both styles run in one pass. |
+
+### On the Community version pin
+
+`intellijIdeaCommunity("2025.2.6.3")` — build **252**.28539.97. **JetBrains stopped publishing
+Community at 253**, and the Gradle plugin enforces it: any IC coordinate from 253 onwards fails with
+*"IntelliJ IDEA Community (IC) is no longer published since 2025.3 (253), use: intellijIdea(...)"*,
+including `2025.3` itself even though the releases API still lists a 253 Community build. So the
+2025.2 line is the newest Community that can actually be resolved, and bumping this pin to anything
+253+ breaks the build rather than upgrading it.
+
+**`sinceBuild` must track this pin.** They are 252 together. Raising one without the other either
+ships `NoSuchMethodError` to older IDEs (target ahead of `sinceBuild`) or makes the plugin refuse to
+install on the very IDE it was built against (`sinceBuild` ahead of target).
+
+The alternative is Ultimate via `intellijIdea("2025.3.5")`, which gives newer patch builds and a 253
+floor, at the cost of a licence prompt on every `runIde` in an unlicensed sandbox. The plugin needs
+nothing from Ultimate — only `Git4Idea`, which Community bundles.
 
 ## Standing risks
 
@@ -30,8 +47,10 @@ and what would have to change to remove the risk entirely.
 
 ## Plugin Verifier status
 
-`./gradlew verifyPlugin` reports **Compatible** against `IU-253.33813.55`, `IU-261.27258.48` and
-`IU-262.10315.19` — three recent majors — with **no internal API usages**.
+`./gradlew verifyPlugin` reports **Compatible** against three recent majors with **no internal API
+usages**. (The run recorded here was against the Ultimate builds `IU-253.33813.55`, `IU-261.27258.48`
+and `IU-262.10315.19`; the dev target has since moved to Community, so the verifier now resolves the
+`IC-*` equivalents.)
 
 What it still reports, and why it is left alone:
 
