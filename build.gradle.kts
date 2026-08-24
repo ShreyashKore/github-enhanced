@@ -57,6 +57,24 @@ intellijPlatform {
         }
     }
 
+    // Only resolved when publishPlugin/signPlugin actually run, so a local `./gradlew build`
+    // (or CI when Marketplace secrets aren't configured yet) never needs these set.
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+        // A version suffix after '-' selects the Marketplace release channel, e.g.
+        // "1.1.0-beta1" publishes to the "beta" channel instead of "default" (stable). Channels
+        // besides "default" are opt-in on Marketplace, so this is the safe way to ship something
+        // for testing without it reaching everyone on the stable channel.
+        channels = providers.gradleProperty("version")
+            .orElse(project.version.toString())
+            .map { listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" }) }
+    }
+
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
 }
 
 tasks {

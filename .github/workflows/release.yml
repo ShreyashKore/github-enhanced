@@ -60,8 +60,18 @@ jobs:
 
           ./gradlew patchChangelog --release-note-file=$RELEASE_NOTE
 
-      # Publish the plugin to JetBrains Marketplace
+      # Build the plugin ZIP so it can be attached to the release even when Marketplace
+      # publishing is skipped below (no PUBLISH_TOKEN secret configured yet).
+      - name: Build Plugin
+        run: ./gradlew buildPlugin
+
+      # Publish the plugin to JetBrains Marketplace.
+      # Skipped (not failed) until a JetBrains Marketplace account and PUBLISH_TOKEN secret
+      # exist. The release still gets its ZIP asset uploaded below regardless. A version with a
+      # "-suffix" (e.g. "1.1.0-beta1") publishes to that Marketplace channel instead of the
+      # default/stable one - see the `publishing.channels` wiring in build.gradle.kts.
       - name: Publish Plugin
+        if: ${{ secrets.PUBLISH_TOKEN != '' }}
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
@@ -69,7 +79,11 @@ jobs:
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
         run: ./gradlew publishPlugin
 
-      # Upload an artifact as a release asset
+      - name: Skip Publish Plugin (no PUBLISH_TOKEN secret yet)
+        if: ${{ secrets.PUBLISH_TOKEN == '' }}
+        run: echo "::notice::PUBLISH_TOKEN secret is not set, so this release was not published to JetBrains Marketplace. The plugin ZIP is still attached to the GitHub release." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Upload the built plugin ZIP as a release asset
       - name: Upload Release Asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
