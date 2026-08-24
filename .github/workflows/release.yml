@@ -65,13 +65,21 @@ jobs:
       - name: Build Plugin
         run: ./gradlew buildPlugin
 
+      # `secrets` isn't allowed inside `if:` expressions directly, so resolve presence here
+      # (via `env:`, which secrets *are* allowed in) and branch on this step's output instead.
+      - name: Check Marketplace Token
+        id: marketplace-token
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: echo "present=${{ env.PUBLISH_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
       # Publish the plugin to JetBrains Marketplace.
       # Skipped (not failed) until a JetBrains Marketplace account and PUBLISH_TOKEN secret
       # exist. The release still gets its ZIP asset uploaded below regardless. A version with a
       # "-suffix" (e.g. "1.1.0-beta1") publishes to that Marketplace channel instead of the
       # default/stable one - see the `publishing.channels` wiring in build.gradle.kts.
       - name: Publish Plugin
-        if: ${{ secrets.PUBLISH_TOKEN != '' }}
+        if: ${{ steps.marketplace-token.outputs.present == 'true' }}
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
@@ -80,7 +88,7 @@ jobs:
         run: ./gradlew publishPlugin
 
       - name: Skip Publish Plugin (no PUBLISH_TOKEN secret yet)
-        if: ${{ secrets.PUBLISH_TOKEN == '' }}
+        if: ${{ steps.marketplace-token.outputs.present != 'true' }}
         run: echo "::notice::PUBLISH_TOKEN secret is not set, so this release was not published to JetBrains Marketplace. The plugin ZIP is still attached to the GitHub release." | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Upload the built plugin ZIP as a release asset
