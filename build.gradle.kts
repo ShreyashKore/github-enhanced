@@ -44,6 +44,14 @@ listOf(configurations.runtimeClasspath, configurations.testRuntimeClasspath).for
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        // The platform's own interfaces (e.g. ToolWindowFactory) rely on real JVM default
+        // methods now. Without this, Kotlin falls back to DefaultImpls delegation, which makes
+        // every implementing class synthesize forwarding overrides for every inherited default
+        // method — including ones marked @ApiStatus.Internal — and that's what verifyPlugin was
+        // flagging as internal API usage.
+        freeCompilerArgs.add("-Xjvm-default=all")
+    }
 }
 
 intellijPlatform {
