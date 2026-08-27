@@ -9,7 +9,7 @@ pluginManagement {
         // mismatch" the moment any coroutine is cancelled. IC 252 ships stdlib 2.2.0 and
         // IU 253 ships 2.2.20, so 2.2.x is the ceiling. See RISKS.md.
         id("org.jetbrains.kotlin.jvm") version "2.2.20"
-        id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
         id("org.jetbrains.changelog") version "2.5.0"
     }
 }
