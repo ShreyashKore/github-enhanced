@@ -1,6 +1,6 @@
 [versions]
 junit4 = "4.13.2"
-junitJupiter = "5.11.4"
+junitJupiter = "6.1.3"
 junitPlatform = "1.11.4"
 # Pinned to the version IntelliJ Platform 2025.3 ships in lib/module-intellij.libraries.kotlinx.serialization.*.jar
 # so the plugin behaves identically whether its own copy or the platform's copy wins on the classpath.
